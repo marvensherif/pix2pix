@@ -1,16 +1,31 @@
-#test.py
+# test.py
 import os
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from model import generator  # Your generator model function
 from data_generator import data_generator  # Updated generator that handles resize and normalize
+from glob import glob
 
 # Ensure output directory exists
 os.makedirs("output", exist_ok=True)
 
-# Load trained generator model
+# Load the most recent trained generator model weights
+def get_latest_weights():
+    checkpoint_dir = 'checkpoints/'
+    weight_files = glob(os.path.join(checkpoint_dir, 'gen_weights_final_*.weights.h5'))
+    if not weight_files:
+        raise FileNotFoundError("No final generator weights found in 'checkpoints/'")
+    return max(weight_files, key=os.path.getmtime)
+
+# Load generator model and weights
 gen = generator()
-gen.load_weights('checkpoints/gen_weights_final.h5')  # Make sure this file exists
+latest_weights_path = get_latest_weights()
+print(f"Loading generator weights from: {latest_weights_path}")
+gen.load_weights(latest_weights_path)
+
+# Compute L1 test loss
+def compute_test_loss(pred, target):
+    return tf.reduce_mean(tf.abs(pred - target)).numpy()
 
 # Save test result images
 def save_images(model, test_input, target, epoch):
@@ -29,7 +44,8 @@ def save_images(model, test_input, target, epoch):
     plt.savefig(f"output/test_epoch_{epoch}.jpg")
     plt.close()
 
-# Create test dataset (no random_jitter, just normalized/resized)
+# Create test dataset
+
 def get_tf_dataset(generator_func, batch_size=1):
     output_signature = (
         tf.TensorSpec(shape=(256, 256, 3), dtype=tf.float32),
@@ -42,7 +58,10 @@ def get_tf_dataset(generator_func, batch_size=1):
 def test(test_ds, epochs):
     for epoch in range(epochs):
         print(f"Testing Epoch {epoch}")
-        for input_, target in test_ds.take(1):  # Just one sample for visual inspection
+        for input_, target in test_ds.take(1):
+            prediction = gen(input_, training=False)
+            l1_loss = compute_test_loss(prediction, target)
+            print(f"Test Loss (L1) at epoch {epoch}: {l1_loss:.4f}")
             save_images(gen, input_, target, epoch)
 
 # Set up and run test

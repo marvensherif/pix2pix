@@ -1,5 +1,4 @@
 # data_generator.py
-
 import random
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -109,7 +108,7 @@ def data_generator():
         # Convert to TensorFlow tensors
         clean_tensor = tf.convert_to_tensor(np.array(clean_img), dtype=tf.float32)
         noisy_tensor = tf.convert_to_tensor(np.array(noisy_img), dtype=tf.float32)
-
+        # print(f"Yielding: clean_tensor shape={clean_tensor.shape}, noisy_tensor shape={noisy_tensor.shape}")
         # Apply resize and normalize
         noisy_tensor, clean_tensor = resize(noisy_tensor, clean_tensor)
         noisy_tensor, clean_tensor = normalize(noisy_tensor, clean_tensor)

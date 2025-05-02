@@ -17,14 +17,15 @@ def downsample(filters, size, batchnorm=True):
     result.add(LeakyReLU())
     return result
 
-# Upsample block
 def upsample(filters, size, dropout=False):
-    init = tf.random_normal_initializer(0., 0.02)
     result = Sequential()
-    result.add(Conv2DTranspose(filters, size, strides=2, padding="same", kernel_initializer=init, use_bias=False))
+    result.add(Conv2DTranspose(filters, size, strides=2, 
+              padding="same", use_bias=False))
     result.add(BatchNormalization())
     if dropout:
-        result.add(Dropout(0.5))
+        # Add explicit noise_shape and name
+       result.add(Dropout(0.5))
+
     result.add(ReLU())
     return result
 
