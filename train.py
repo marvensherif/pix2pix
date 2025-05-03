@@ -16,7 +16,7 @@ LOG_DIR = "logs"
 PLOT_DIR = "plots"
 CHECKPOINT_DIR = "checkpoints"
 IMG_SIZE = 256
-BATCH_SIZE = 1
+BATCH_SIZE = 3
 BUFFER_SIZE = 1000
 LOG_FILENAME = "training_log.txt"
 MODEL_SUMMARY_FILENAME = "model_summaries.txt"
@@ -190,41 +190,45 @@ class TrainingState:
 def train_step(input_image, target):
     with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         gen_output = gen(input_image, training=True)
-        
+
         disc_real = disc([input_image, target], training=True)
         disc_fake = disc([input_image, gen_output], training=True)
-        
-        gen_loss_total, _, _ = generator_loss(disc_fake, gen_output, target)
+
+        gen_loss_total, gan_loss, l1_loss, perc_loss = generator_loss(disc_fake, gen_output, target)
         disc_loss = discriminator_loss(disc_real, disc_fake)
-    
+
     gen_gradients = gen_tape.gradient(gen_loss_total, gen.trainable_variables)
     disc_gradients = disc_tape.gradient(disc_loss, disc.trainable_variables)
-    
+
     gen_grad_norm = tf.linalg.global_norm(gen_gradients)
     disc_grad_norm = tf.linalg.global_norm(disc_gradients)
-    
+
     generator_optimizer.apply_gradients(zip(gen_gradients, gen.trainable_variables))
     discriminator_optimizer.apply_gradients(zip(disc_gradients, disc.trainable_variables))
-    
-    return gen_loss_total, disc_loss, gen_grad_norm, disc_grad_norm
+
+    return gen_loss_total, disc_loss, gen_grad_norm, disc_grad_norm, gan_loss.numpy(), l1_loss.numpy(), perc_loss.numpy()
+
 
 def validate(val_ds):
     val_input, val_target = next(iter(val_ds))
     val_gen_output = gen(val_input, training=False)
     val_disc_real = disc([val_input, val_target], training=False)
     val_disc_fake = disc([val_input, val_gen_output], training=False)
-    val_gen_loss = generator_loss(val_disc_fake, val_gen_output, val_target)[0]
+    val_gen_loss, _, _, perc_loss = generator_loss(val_disc_fake, val_gen_output, val_target)
     val_disc_loss = discriminator_loss(val_disc_real, val_disc_fake)
-    return val_input, val_target, val_gen_loss.numpy(), val_disc_loss.numpy()
+    return val_input, val_target, val_gen_loss.numpy(), val_disc_loss.numpy(), perc_loss.numpy()
+
 
 # === Training Loop ===
 def fit(train_ds, val_ds, total_epochs, steps_per_epoch, initial_epoch=0):
     history = {
-        'epoch': [], 'gen_loss': [], 'disc_loss': [],
-        'val_gen_loss': [], 'val_disc_loss': [],
-        'gen_grad_norm': [], 'disc_grad_norm': [],
-        'lr': []
+    'epoch': [], 'gen_loss': [], 'disc_loss': [],
+    'val_gen_loss': [], 'val_disc_loss': [],
+    'gen_grad_norm': [], 'disc_grad_norm': [],
+    'gan_loss': [], 'l1_loss': [], 'perc_loss': [],
+    'val_perc_loss': [], 'lr': []
     }
+
     
     early_stop = TrainingState()
     best_val_loss = float('inf')
@@ -241,22 +245,25 @@ def fit(train_ds, val_ds, total_epochs, steps_per_epoch, initial_epoch=0):
         start_time = time.time()
         gen_losses, disc_losses = [], []
         gen_grad_norms, disc_grad_norms = [], []
-        
+        gan_losses, l1_losses, perc_losses = [], [],[]
         # Training phase
         for step, (input_image, target) in enumerate(train_ds.take(steps_per_epoch)):
-            gen_loss, disc_loss, gen_grad, disc_grad = train_step(input_image, target)
+            gen_loss, disc_loss, gen_grad, disc_grad, gan, l1, perc = train_step(input_image, target)
             gen_losses.append(gen_loss.numpy())
             disc_losses.append(disc_loss.numpy())
             gen_grad_norms.append(gen_grad.numpy())
             disc_grad_norms.append(disc_grad.numpy())
-            
+            gan_losses.append(gan)
+            l1_losses.append(l1)
+            perc_losses.append(perc)
             if step % 10 == 0:
                 print(f"Epoch {epoch+1} | Step {step+1}/{steps_per_epoch} | "
                       f"Gen Loss: {gen_loss:.4f} | Disc Loss: {disc_loss:.4f} | "
+                      f"GAN: {gan:.4f} | L1: {l1:.4f} | Perceptual: {perc:.4f} | "
                       f"Grad Norms: G={gen_grad:.2f}, D={disc_grad:.2f}")
-
+            
         # Validation
-        val_input, val_target, val_gen_loss, val_disc_loss = validate(val_ds)
+        val_input, val_target, val_gen_loss, val_disc_loss, val_perc_loss = validate(val_ds)
         
         # Learning rate adjustment
         if val_gen_loss < best_val_loss - 0.01:
@@ -279,6 +286,10 @@ def fit(train_ds, val_ds, total_epochs, steps_per_epoch, initial_epoch=0):
         history['val_disc_loss'].append(val_disc_loss)
         history['gen_grad_norm'].append(np.mean(gen_grad_norms))
         history['disc_grad_norm'].append(np.mean(disc_grad_norms))
+        history['gan_loss'].append(np.mean(gan_losses))
+        history['l1_loss'].append(np.mean(l1_losses))
+        history['perc_loss'].append(np.mean(perc_losses))
+        history['val_perc_loss'].append(val_perc_loss)
         history['lr'].append(current_lr)
         
         # Save checkpoint and visuals
@@ -293,6 +304,7 @@ def fit(train_ds, val_ds, total_epochs, steps_per_epoch, initial_epoch=0):
         # Epoch summary
         print(f"\nEpoch {epoch+1}/{total_epochs} ({time.time()-start_time:.1f}s)")
         print(f"Train Loss: G={np.mean(gen_losses):.4f}, D={np.mean(disc_losses):.4f}")
+        print(f"Train L1 Loss: {np.mean(l1_losses):.4f}, Perceptual Loss: {np.mean(perc_losses):.4f}")
         print(f"Val Loss:   G={val_gen_loss:.4f}, D={val_disc_loss:.4f}")
         print(f"Grad Norms: G={np.mean(gen_grad_norms):.2f}, D={np.mean(disc_grad_norms):.2f}")
         print(f"Learning Rate: {current_lr:.2e}\n")
@@ -308,6 +320,8 @@ def fit(train_ds, val_ds, total_epochs, steps_per_epoch, initial_epoch=0):
     plt.plot(history['val_gen_loss'], label='Generator Val')
     plt.plot(history['disc_loss'], label='Discriminator Train')
     plt.plot(history['val_disc_loss'], label='Discriminator Val')
+    plt.plot(history['perc_loss'], label='Perceptual Train')
+    plt.plot(history['val_perc_loss'], label='Perceptual Val')
     plt.title("Training Progress")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
@@ -332,9 +346,9 @@ if __name__ == "__main__":
     save_model_summaries()
     
     # Training parameters
-    total_epochs = 7
+    total_epochs = 3
     steps_per_epoch = 5
-    initial_epoch = 2
+    initial_epoch = 0
     
     # Initialize datasets
     train_dataset = get_dataset(data_generator).repeat()
