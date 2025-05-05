@@ -3,7 +3,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, LeakyReLU, ReLU, Dropout, Input, Concatenate, ZeroPadding2D
 from tensorflow.keras.models import Model, Sequential
-
+from tensorflow.keras.layers import SpatialDropout2D 
 # Set default image size (can be overridden externally)
 IMAGE_SIZE = 256
 
@@ -24,7 +24,8 @@ def upsample(filters, size, dropout=False):
     result.add(BatchNormalization())
     if dropout:
         # Add explicit noise_shape and name
-       result.add(Dropout(0.5))
+       result.add(SpatialDropout2D(0.5))
+    
 
     result.add(ReLU())
     return result
