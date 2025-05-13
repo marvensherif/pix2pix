@@ -17,30 +17,35 @@ def resize(input_image, real_image):
     return input_image, real_image
 
 def random_jitter(input_image, real_image):
-    
-    """Random horizontal flip (applied unconditionally)"""
-    input_image = tf.image.flip_left_right(input_image)
-    real_image = tf.image.flip_left_right(real_image)
-    
+    # Apply horizontal flip to both (to maintain alignment)
+    if tf.random.uniform(()) > 0.5:
+        input_image = tf.image.flip_left_right(input_image)
+        real_image = tf.image.flip_left_right(real_image)
+
+    # You can also add random cropping/resizing here for both if needed
+
+    # Apply brightness to input only
     if tf.random.uniform(()) > 0.5:
         input_image = tf.image.random_brightness(input_image, max_delta=0.2)
-        real_image = tf.image.random_brightness(real_image, max_delta=0.2)
-    
+
+    # Apply contrast to input only
     if tf.random.uniform(()) > 0.5:
         input_image = tf.image.random_contrast(input_image, lower=0.8, upper=1.2)
-        real_image = tf.image.random_contrast(real_image, lower=0.8, upper=1.2)
-    
+
+    # Apply saturation to input only
     if tf.random.uniform(()) > 0.5:
         input_image = tf.image.random_saturation(input_image, lower=0.8, upper=1.2)
-        real_image = tf.image.random_saturation(real_image, lower=0.8, upper=1.2)
-    
+
+    # Apply hue shift to input only
     if tf.random.uniform(()) > 0.5:
         input_image = tf.image.random_hue(input_image, max_delta=0.05)
-        real_image = tf.image.random_hue(real_image, max_delta=0.05)
 
+    # Add Gaussian noise to input only
     if tf.random.uniform(()) > 0.5:
-        noise = tf.random.normal(shape=tf.shape(input_image), mean=0.0, stddev=0.05, dtype=tf.float32)
+        noise = tf.random.normal(shape=tf.shape(input_image), mean=0.0, stddev=0.05)
         input_image = tf.clip_by_value(input_image + noise, 0.0, 1.0)
+
     return input_image, real_image
+
 
 
